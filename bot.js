@@ -1,5 +1,6 @@
 const { Telegraf, Markup } = require('telegraf');
 const cron = require('node-cron');
+const express = require('express'); // THÊM EXPRESS
 const TradingAnalyzer = require('./analyzer');
 const config = require('./config');
 
@@ -9,9 +10,33 @@ class TradingBot {
         this.analyzer = new TradingAnalyzer();
         this.userSignals = new Map();
         this.setupHandlers();
+        
+        // Khởi tạo Express server để Render không báo lỗi
+        this.setupHttpServer();
     }
 
-    setupHandlers() {
+    setupHttpServer() {
+        const app = express();
+        const PORT = process.env.PORT || 3000;
+
+        app.get('/', (req, res) => {
+            res.json({ 
+                status: 'AI Trading Bot is running!',
+                uptime: process.uptime(),
+                timestamp: new Date().toISOString()
+            });
+        });
+
+        app.get('/health', (req, res) => {
+            res.json({ status: 'healthy' });
+        });
+
+        // Khởi động server
+        this.server = app.listen(PORT, '0.0.0.0', () => {
+            console.log(`🚀 HTTP Server running on port ${PORT}`);
+        });
+    }
+    
         // Start command
         this.bot.start((ctx) => {
             const userName = ctx.from.first_name || 'Trader';
@@ -192,6 +217,7 @@ class TradingBot {
     }
 
     start() {
+        // Khởi động bot trước
         this.bot.launch().then(() => {
             console.log('✅ Telegram Bot đã khởi động thành công!');
             this.startAutoAnalysis();
@@ -200,8 +226,16 @@ class TradingBot {
         });
 
         // Enable graceful stop
-        process.once('SIGINT', () => this.bot.stop('SIGINT'));
-        process.once('SIGTERM', () => this.bot.stop('SIGTERM'));
+        process.once('SIGINT', () => {
+            console.log('🛑 Shutting down gracefully...');
+            this.bot.stop('SIGINT');
+            this.server?.close();
+        });
+        process.once('SIGTERM', () => {
+            console.log('🛑 Shutting down gracefully...');
+            this.bot.stop('SIGTERM');
+            this.server?.close();
+        });
     }
 }
 
